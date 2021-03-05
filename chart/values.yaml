@@ -550,18 +550,18 @@ promtail:
     snippets:
       scrapeConfigs: |
         - job_name: workspaces
-          pipeline_stages:
-            {{- toYaml .Values.config.snippets.pipelineStages | nindent 4 }}
-          - json:
-              expressions:
-                owner: __meta_kubernetes_pod_label_owner
+          pipelineStages:
+            - cri: {}
+            - json:
+                expressions:
+                  owner: __meta_kubernetes_pod_label_owner
           - tenant:
               source: owner
           kubernetes_sd_configs:
             - role: pod
-              # namespaces:
-              #  names:
-              #    - {{ .Release.Namespace }}
+              namespaces:
+                names:
+                  - {{ .Release.Namespace }}
           relabel_configs:
             # Drop everything that is not a gitpod workspace
             - source_labels:
