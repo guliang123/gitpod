@@ -552,6 +552,11 @@ promtail:
         - job_name: workspaces
           pipeline_stages:
             {{- toYaml .Values.config.snippets.pipelineStages | nindent 4 }}
+          - json:
+              expressions:
+                owner: __meta_kubernetes_pod_label_owner
+          - tenant:
+              source: owner
           kubernetes_sd_configs:
             - role: pod
               # namespaces:
@@ -584,12 +589,14 @@ promtail:
         filename: /run/promtail/positions.yaml
       scrape_configs:
         {{- tpl .Values.config.snippets.scrapeConfigs . | nindent 2 }}
+
 loki:
   enabled: true
   fullnameOverride: loki
   config:
     # https://grafana.com/docs/loki/latest/configuration/
-    auth_enabled: false
+    # enable multi-tenancy
+    auth_enabled: true
 
     server:
       http_listen_port: 3100
