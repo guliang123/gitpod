@@ -52,19 +52,31 @@ func (srv *NotificationService) RegisterREST(mux *runtime.ServeMux, grpcEndpoint
 
 // Sends a notification to the user
 func (srv *NotificationService) Notify(ctx context.Context, req *api.NotifyRequest) (*api.NotifyResponse, error) {
+	log.Log.WithField("NotifyRequest", req).Info("Notify entered")
+	defer log.Log.WithField("NotifyRequest", req).Info("Notify exited")
 	if srv.nextNotificationId >= maxPendingNotifications {
 		return nil, status.Error(codes.ResourceExhausted, "Max number of pending notifications exceeded")
 	}
-	var channel = srv.notifySubscribers(req)
+	var pending = srv.notifySubscribers(req)
 	select {
-	case resp := <-channel:
+	case resp, ok := <-pending.responseChannel:
+		if !ok {
+			log.Log.Error("notify response channel has been closed")
+			return nil, status.Error(codes.Aborted, "response channel closed")
+		}
+		log.Log.WithField("NotifyResponse", resp).Info("sending notify response")
 		return resp, nil
 	case <-ctx.Done():
+		log.Log.Info("notify cancelled")
+		srv.mutex.Lock()
+		defer srv.mutex.Unlock()
+		close(pending.responseChannel)
+		delete(srv.pendingNotifications, pending.message.RequestId)
 		return nil, ctx.Err()
 	}
 }
 
-func (srv *NotificationService) notifySubscribers(req *api.NotifyRequest) chan *api.NotifyResponse {
+func (srv *NotificationService) notifySubscribers(req *api.NotifyRequest) *pendingNotification {
 	srv.mutex.Lock()
 	defer srv.mutex.Unlock()
 	var (
@@ -81,19 +93,22 @@ func (srv *NotificationService) notifySubscribers(req *api.NotifyRequest) chan *
 	}
 	srv.removeSubscribers(staleSubscribers)
 	var channel = make(chan *api.NotifyResponse, 1)
-	srv.pendingNotifications[requestId] = &pendingNotification{
+	pending := &pendingNotification{
 		message:         message,
 		responseChannel: channel,
 	}
+	srv.pendingNotifications[requestId] = pending
 	if len(req.Actions) == 0 {
 		channel <- &api.NotifyResponse{}
 		close(channel)
 	}
-	return channel
+	return pending
 }
 
 // subscribes to notifications that are sent to the supervisor
 func (srv *NotificationService) Subscribe(req *api.SubscribeRequest, resp api.NotificationService_SubscribeServer) error {
+	log.Log.WithField("SubscribeRequest", req).Info("Subscribe entered")
+	defer log.Log.WithField("SubscribeRequest", req).Info("Subscribe exited")
 	channel := srv.subscribeSubscriber(req, resp)
 	for {
 		select {
@@ -148,6 +163,10 @@ func (srv *NotificationService) Respond(ctx context.Context, req *api.RespondReq
 }
 
 func isActionAllowed(action string, req *api.NotifyRequest) bool {
+	if action == "" {
+		// user cancelled, which is always allowed
+		return true
+	}
 	for _, allowedAction := range req.Actions {
 		if allowedAction == action {
 			return true
