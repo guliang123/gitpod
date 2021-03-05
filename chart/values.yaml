@@ -559,20 +559,17 @@ promtail:
               namespaces:
                 names:
                   - {{ .Release.Namespace }}
+              selectors:
+                - role: pod
+                  label: "component=workspace"
           relabel_configs:
-            # Drop everything that is not a gitpod workspace
             - source_labels:
-              - __meta_kubernetes_pod_label_component
-              regex: workspace
-              action: keep
-            - source_labels:
-              - __meta_kubernetes_pod_label_app
-              target_label: app
+              - __meta_kubernetes_pod_name
+              target_label: workspace
               action: replace
-            # Add workspace name as a label to it can be used for future filtering
             - source_labels:
               - __meta_kubernetes_pod_label_workspaceID
-              target_label: workspace
+              target_label: workspaceID
               action: replace
             - source_labels:
               - __meta_kubernetes_pod_label_owner
