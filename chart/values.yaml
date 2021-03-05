@@ -550,13 +550,10 @@ promtail:
     snippets:
       scrapeConfigs: |
         - job_name: workspaces
-          pipelineStages:
+          pipeline_stages:
             - cri: {}
-            - json:
-                expressions:
-                  owner: __meta_kubernetes_pod_label_owner
-          - tenant:
-              source: owner
+            - tenant:
+                source: owner
           kubernetes_sd_configs:
             - role: pod
               namespaces:
@@ -574,8 +571,12 @@ promtail:
               action: replace
             # Add workspace name as a label to it can be used for future filtering
             - source_labels:
-              - __meta_kubernetes_pod_name
+              - __meta_kubernetes_pod_label_workspaceID
               target_label: workspace
+              action: replace
+            - source_labels:
+              - __meta_kubernetes_pod_label_owner
+              target_label: owner
               action: replace
             {{- toYaml .Values.config.snippets.common | nindent 4 }}
     file: |
